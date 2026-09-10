@@ -2,18 +2,18 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Travel on Mike&#39;s Blog</title>
-    <link>http://localhost:1313/blog/tags/travel/</link>
+    <link>http://localhost:1313/tags/travel/</link>
     <description>Recent content in Travel on Mike&#39;s Blog</description>
     <generator>Hugo</generator>
     <language>zh-cn</language>
-    <lastBuildDate>Mon, 06 Apr 2026 00:00:00 +0000</lastBuildDate>
-    <atom:link href="http://localhost:1313/blog/tags/travel/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 09 Sep 2026 00:00:00 +0000</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/travel/index.xml" rel="self" type="application/rss+xml" />
     <item>
-      <title>Qingshan Lake</title>
-      <link>http://localhost:1313/blog/photography/test1/</link>
-      <pubDate>Mon, 06 Apr 2026 00:00:00 +0000</pubDate>
-      <guid>http://localhost:1313/blog/photography/test1/</guid>
-      <description>A collection of shots from my trip to the Golden State.</description>
+      <title>SFO Airport</title>
+      <link>http://localhost:1313/photography/sfo-airport/</link>
+      <pubDate>Wed, 09 Sep 2026 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1313/photography/sfo-airport/</guid>
+      <description>A collection of photographs from San Francisco International Airport.</description>
     </item>
   </channel>
 </rss>

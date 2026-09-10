@@ -2,17 +2,17 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Machine Learning on Mike&#39;s Blog</title>
-    <link>https://mikeogilvy.github.io/tags/machine-learning/</link>
+    <link>http://localhost:1313/tags/machine-learning/</link>
     <description>Recent content in Machine Learning on Mike&#39;s Blog</description>
     <generator>Hugo</generator>
     <language>zh-cn</language>
     <lastBuildDate>Sat, 28 Mar 2026 02:24:29 +0800</lastBuildDate>
-    <atom:link href="https://mikeogilvy.github.io/tags/machine-learning/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/tags/machine-learning/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>ML-2 Note: Linear Models for Classification and GLMs</title>
-      <link>https://mikeogilvy.github.io/posts/ml/ml---2/</link>
+      <link>http://localhost:1313/posts/ml/ml---2/</link>
       <pubDate>Sat, 28 Mar 2026 02:24:29 +0800</pubDate>
-      <guid>https://mikeogilvy.github.io/posts/ml/ml---2/</guid>
+      <guid>http://localhost:1313/posts/ml/ml---2/</guid>
       <description>&lt;h2 id=&#34;1-why-classification-uses-logistic-regression&#34;&gt;1. Why Classification Uses Logistic Regression&lt;/h2&gt;
 &lt;p&gt;In classification problems, the target variable is discrete.&lt;/p&gt;
 &lt;p&gt;Binary classification example:&lt;/p&gt;
@@ -35,9 +35,9 @@
     </item>
     <item>
       <title>ML-1 Note: Supervised Learning; Linear Regression</title>
-      <link>https://mikeogilvy.github.io/posts/ml/ml---1/</link>
+      <link>http://localhost:1313/posts/ml/ml---1/</link>
       <pubDate>Sun, 22 Mar 2026 03:32:29 +0800</pubDate>
-      <guid>https://mikeogilvy.github.io/posts/ml/ml---1/</guid>
+      <guid>http://localhost:1313/posts/ml/ml---1/</guid>
       <description>&lt;h2 id=&#34;1-basic-model-of-linear-regression&#34;&gt;1. Basic Model of Linear Regression&lt;/h2&gt;
 &lt;p&gt;Linear Regression is one of the simplest and most fundamental models in &lt;strong&gt;supervised learning&lt;/strong&gt;.&lt;br&gt;
 The goal is to model the relationship between input features and a continuous target variable.&lt;/p&gt;

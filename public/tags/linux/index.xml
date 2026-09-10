@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Linux on Mike&#39;s Blog</title>
+    <link>http://localhost:1313/tags/linux/</link>
+    <description>Recent content in Linux on Mike&#39;s Blog</description>
+    <generator>Hugo</generator>
+    <language>zh-cn</language>
+    <lastBuildDate>Wed, 09 Sep 2026 20:00:00 +0800</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/linux/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Making RTX 4060 Passthrough Work on an AMD Laptop</title>
+      <link>http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/</link>
+      <pubDate>Wed, 09 Sep 2026 20:00:00 +0800</pubDate>
+      <guid>http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/</guid>
+      <description>&lt;p&gt;GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to &lt;code&gt;vfio-pci&lt;/code&gt;, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.&lt;/p&gt;
+&lt;p&gt;On my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

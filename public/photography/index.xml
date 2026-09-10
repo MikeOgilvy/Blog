@@ -2,17 +2,24 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Photography on Mike&#39;s Blog</title>
-    <link>https://mikeogilvy.github.io/photography/</link>
+    <link>http://localhost:1313/photography/</link>
     <description>Recent content in Photography on Mike&#39;s Blog</description>
     <generator>Hugo</generator>
     <language>zh-cn</language>
-    <lastBuildDate>Mon, 06 Apr 2026 00:00:00 +0000</lastBuildDate>
-    <atom:link href="https://mikeogilvy.github.io/photography/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 09 Sep 2026 00:00:00 +0000</lastBuildDate>
+    <atom:link href="http://localhost:1313/photography/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>SFO Airport</title>
+      <link>http://localhost:1313/photography/sfo-airport/</link>
+      <pubDate>Wed, 09 Sep 2026 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1313/photography/sfo-airport/</guid>
+      <description>A collection of photographs from San Francisco International Airport.</description>
+    </item>
     <item>
       <title>Qingshan Lake</title>
-      <link>https://mikeogilvy.github.io/photography/qingshanlake/</link>
+      <link>http://localhost:1313/photography/qingshanlake/</link>
       <pubDate>Mon, 06 Apr 2026 00:00:00 +0000</pubDate>
-      <guid>https://mikeogilvy.github.io/photography/qingshanlake/</guid>
+      <guid>http://localhost:1313/photography/qingshanlake/</guid>
       <description>A collection of shots from my trip to the Golden State.</description>
     </item>
   </channel>

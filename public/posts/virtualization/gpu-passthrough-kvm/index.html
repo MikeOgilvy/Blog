@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="auto">
+
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Making RTX 4060 Passthrough Work on an AMD Laptop | Mike&#39;s Blog</title>
+<meta name="keywords" content="Linux, KVM, VFIO">
+<meta name="description" content="GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to vfio-pci, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.
+On my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.">
+<meta name="author" content="Mike">
+<link rel="canonical" href="http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.1b920f66ff2d3110b619f31dc0642bbfc43d776cf6cf2aba3611cb69796c1fea.css" integrity="sha256-G5IPZv8tMRC2GfMdwGQrv8Q9d2z2zyq6NhHLaXlsH&#43;o=" rel="preload stylesheet" as="style">
+<link rel="icon" href="http://localhost:1313/ico/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="http://localhost:1313/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="http://localhost:1313/favicon-32x32.png">
+<link rel="apple-touch-icon" href="http://localhost:1313/apple-touch-icon.png">
+<link rel="mask-icon" href="http://localhost:1313/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<link rel="alternate" hreflang="en" href="http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: rgb(29, 30, 32);
+                --entry: rgb(46, 46, 51);
+                --primary: rgb(218, 218, 219);
+                --secondary: rgb(155, 156, 157);
+                --tertiary: rgb(65, 66, 68);
+                --content: rgb(196, 196, 197);
+                --code-block-bg: rgb(46, 46, 51);
+                --code-bg: rgb(55, 56, 62);
+                --border: rgb(51, 51, 51);
+                color-scheme: dark;
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .toc {
+                background: var(--entry);
+            }
+        }
+
+        @media (prefers-color-scheme: light) {
+            .list::-webkit-scrollbar-thumb {
+                border-color: var(--code-bg);
+            }
+        }
+
+    </style>
+</noscript>
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.querySelector("html").dataset.theme = 'dark';
+    } else if (localStorage.getItem("pref-theme") === "light") {
+       document.querySelector("html").dataset.theme = 'light';
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.querySelector("html").dataset.theme = 'dark';
+    } else {
+        document.querySelector("html").dataset.theme = 'light';
+    }
+
+</script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+          delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$', right: '$', display: false},
+              {left: '\\(', right: '\\)', display: false},
+              {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError : false
+        });">
+</script>
+
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+<style>
+     
+    .main, .post-single, .list-header {
+        animation: smooth-entry 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+        opacity: 0;
+        will-change: transform, opacity;
+    }
+
+     
+    @keyframes smooth-entry {
+        0% {
+            opacity: 0;
+            transform: translateY(15px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+     
+    .menu a:active {
+        transform: scale(0.96);
+        transition: 0.1s;
+    }
+</style>
+
+<script>
+    
+    window.addEventListener('beforeunload', function() {
+        const main = document.querySelector('.main') || document.querySelector('#top');
+        if (main) {
+            main.style.transition = 'opacity 0.2s ease';
+            main.style.opacity = '0';
+        }
+    });
+</script><aside id="dynamic-profile" class="floating-profile" style="opacity: 0; position: fixed !important; z-index: 999999 !important; transition: opacity 0.3s;">
+    <div class="profile-content">
+        <a href="/" title="Home">
+            <img src="/Avatar.jpg" alt="Avatar" style="width: 85px !important; height: 85px !important; object-fit: cover; border-radius: 50% !important; display: block; margin: 0 auto 10px; border: 2px solid var(--border);">
+        </a>
+        <h3 style="margin: 12px 0 5px; font-size: 1.1rem; text-align: center; color: var(--primary);">Mike Ogilvy</h3>
+        <p style="font-size: 0.9rem; color: var(--secondary); text-align: center; line-height: 1.4; padding: 0 10px; margin-bottom: 15px;">Recording life, technology and essays</p>
+        <div class="floating-social" style="display: flex; gap: 14px; justify-content: center; margin-bottom: 20px;">
+            <a href="https://github.com/MikeOgilvy"target="_blank"rel="noopener noreferrer" title="github" style="color: var(--secondary); transition: 0.2s; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg></a>
+            <a href="https://x.com/MikeOgilvy"target="_blank"rel="noopener noreferrer" title="X" style="color: var(--secondary); transition: 0.2s; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"></path><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"></path></svg></a>
+            <a href="https://t.me/MikeOgilvy"target="_blank"rel="noopener noreferrer" title="Telegram" style="color: var(--secondary); transition: 0.2s; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-8.609 3.33c-2.068.8-4.133 1.598-5.724 2.21a405.15 405.15 0 0 1-2.849 1.09c-.42.147-.99.332-1.473.901-.728.968.193 1.798.919 2.286 1.61.516 3.275 1.009 4.654 1.472.509 1.793.997 3.592 1.48 5.388.16.36.506.494.864.498l-.002.018s.281.028.555-.038a2.1 2.1 0 0 0 .933-.517c.345-.324 1.28-1.244 1.811-1.764l3.999 2.952.032.018s.442.311 1.09.355c.324.022.75-.04 1.116-.308.37-.27.613-.702.728-1.196.342-1.492 2.61-12.285 2.997-14.072l-.01.042c.27-1.006.17-1.928-.455-2.474a1.654 1.654 0 0 0-1.034-.407z" /></svg></a>
+            <a href="https://wa.me/15106960053"target="_blank"rel="noopener noreferrer" title="whatsapp" style="color: var(--secondary); transition: 0.2s; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 360 380" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M307.546 52.5655C273.709 18.685 228.706 0.0171895 180.756 0C81.951 0 1.53846 80.404 1.50408 179.235C1.48689 210.829 9.74646 241.667 25.4319 268.844L0 361.736L95.0236 336.811C121.203 351.096 150.683 358.616 180.679 358.625H180.756C279.544 358.625 359.966 278.212 360 179.381C360.017 131.483 341.392 86.4547 307.546 52.5741V52.5655ZM180.756 328.354H180.696C153.966 328.346 127.744 321.16 104.865 307.589L99.4242 304.358L43.034 319.149L58.0834 264.168L54.5423 258.53C39.6304 234.809 31.749 207.391 31.7662 179.244C31.8006 97.1036 98.6334 30.2707 180.817 30.2707C220.61 30.2879 258.015 45.8015 286.145 73.9665C314.276 102.123 329.755 139.562 329.738 179.364C329.703 261.513 262.871 328.346 180.756 328.346V328.354ZM262.475 216.777C257.997 214.534 235.978 203.704 231.869 202.209C227.761 200.713 224.779 199.966 221.796 204.452C218.814 208.939 210.228 219.029 207.615 222.011C205.002 225.002 202.389 225.372 197.911 223.128C193.434 220.885 179.003 216.158 161.891 200.902C148.578 189.024 139.587 174.362 136.975 169.875C134.362 165.389 136.7 162.965 138.934 160.739C140.945 158.728 143.412 155.505 145.655 152.892C147.899 150.279 148.638 148.406 150.133 145.423C151.629 142.432 150.881 139.82 149.764 137.576C148.646 135.333 139.691 113.287 135.952 104.323C132.316 95.5909 128.621 96.777 125.879 96.6309C123.266 96.5019 120.284 96.4762 117.293 96.4762C114.302 96.4762 109.454 97.5935 105.346 102.08C101.238 106.566 89.6691 117.404 89.6691 139.441C89.6691 161.478 105.716 182.785 107.959 185.776C110.202 188.767 139.544 234.001 184.469 253.408C195.153 258.023 203.498 260.782 210.004 262.845C220.731 266.257 230.494 265.776 238.212 264.624C246.816 263.335 264.71 253.786 268.44 243.326C272.17 232.866 272.17 223.893 271.053 222.028C269.936 220.163 266.945 219.037 262.467 216.794L262.475 216.777Z"></path></svg></a>
+            <a href="mailto:mikeogilvy25@gmail.com"rel="noopener noreferrer" title="Email" style="color: var(--secondary); transition: 0.2s; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg></a>
+        </div>
+        <div id="mini-calendar" style="width: 175px; margin: 0 auto; background: var(--theme); border: 1px solid var(--border); border-radius: 10px; padding: 10px; box-sizing: border-box;">
+            <div id="cal-header" style="text-align: center; font-size: 0.7rem; font-weight: 800; margin-bottom: 10px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px;"></div>
+            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 0.6rem; color: #14b30f; font-weight: bold; margin-bottom: 5px;">
+                <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            </div>
+            <div id="cal-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 0.65rem; color: var(--primary);"></div>
+        </div>
+    </div>
+    <div id="visitor-map" style="width: 175px; margin: 15px auto 0; background: var(--theme); border: 1px solid var(--border); border-radius: 10px; padding: 10px; box-sizing: border-box;">
+        <div style="text-align: center; font-size: 0.7rem; font-weight: 800; margin-bottom: 8px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px;">World Visitors</div>
+        <div style="width: 100%; border-radius: 5px; overflow: hidden; filter: hue-rotate(288deg) brightness(0.9) contrast(1.0);">
+            <script type="text/javascript" id="mmvst_globe" src="//mapmyvisitors.com/globe.js?d=IpefWSQAVIpB3az28sIhvNAOep68N38OOIadTlGr_P4"></script>
+        </div>
+    </div>
+</aside><meta property="og:url" content="http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/">
+  <meta property="og:site_name" content="Mike&#39;s Blog">
+  <meta property="og:title" content="Making RTX 4060 Passthrough Work on an AMD Laptop">
+  <meta property="og:description" content="GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to vfio-pci, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.
+On my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.">
+  <meta property="og:locale" content="zh_cn">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="posts">
+    <meta property="article:published_time" content="2026-09-09T20:00:00+08:00">
+    <meta property="article:modified_time" content="2026-09-09T20:00:00+08:00">
+    <meta property="article:tag" content="Linux">
+    <meta property="article:tag" content="KVM">
+    <meta property="article:tag" content="VFIO">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Making RTX 4060 Passthrough Work on an AMD Laptop">
+  <meta name="twitter:description" content="GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to vfio-pci, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.
+On my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.">
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "http://localhost:1313/posts/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "Making RTX 4060 Passthrough Work on an AMD Laptop",
+      "item": "http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Making RTX 4060 Passthrough Work on an AMD Laptop",
+  "name": "Making RTX 4060 Passthrough Work on an AMD Laptop",
+  "description": "GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to vfio-pci, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.\nOn my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.\n",
+  "keywords": [
+    "Linux", "KVM", "VFIO"
+  ],
+  "articleBody": "GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to vfio-pci, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.\nOn my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.\nThe Topology The host runs Fedora 43 on a Ryzen 9 8945HS. The Radeon 780M remains the host display adapter; the mobile RTX 4060 is reserved for a Windows 11 guest named win11.\nThe NVIDIA card exposes two PCI functions:\n0000:01:00.0 NVIDIA RTX 4060 Mobile 10de:28e0 0000:01:00.1 NVIDIA HDMI/DP audio 10de:22be Both functions are the only members of IOMMU group 14. That is the topology required for a conventional VFIO assignment: the GPU and its audio function can be isolated together, while the host keeps using the 780M.\nThe first prerequisite is making the dGPU visible. In the laptop’s Integrated mode the 4060 is removed from the PCI bus entirely, so there is nothing for VFIO to bind. Switching to Hybrid mode and rebooting makes 01:00.* enumerable without taking the host’s display away from the 780M.\nThe Failure Signal After adding both PCI functions to the Q35/UEFI win11 domain, startup failed with:\nFirmware has requested this device have a 1:1 IOMMU mapping Failed to set group container: Invalid argument This message is easy to misdiagnose as a libvirt or driver problem. The important observations were:\nlspci -nnk showed both functions owned by vfio-pci. Group 14 contained no unrelated devices. The same failure occurred with both the legacy VFIO container backend and QEMU’s iommufd path. That moved the investigation below libvirt. The kernel was rejecting the IOMMU domain before QEMU could map guest memory.\nReading the IVRS Table AMD systems describe IOMMU device ranges through the ACPI IVRS table. The firmware on this machine contained two type 0x22 ranges covering:\n0x0000..0x0fff Those ranges accidentally included PCI bus 01, where the RTX 4060 lives. Linux therefore treated the card as requiring an immutable 1:1 mapping. VFIO correctly refused to create a DMA container that violated that request.\nChanging kernel parameters did not address the actual defect. iommu=pt changes the default mapping policy, but it does not rewrite a device-specific IVRS reservation. Likewise, force_isolation and no-IOMMU modes would either leave the reservation intact or weaken the security boundary.\nA Surgical ACPI Override The fix was an ACPI table override that removes only bus 01 from those two ranges. Each range is split into:\n0x0000..0x00ff 0x0200..0x0fff The gap corresponds to the affected bus. Every other device keeps the firmware’s original isolation rules.\nThe patcher is deliberately conservative: it checks the IVRS signature, expected record layout, table length, and checksum before writing an output file. The resulting AML is installed through dracut’s early CPIO mechanism:\n/etc/vfio-acpi-override/IVRS.aml /etc/dracut.conf.d/91-vfio-ivrs.conf After reboot, the kernel reported both the initramfs table and the table upgrade:\nACPI: IVRS ACPI table found in initrd ACPI: Table Upgrade: override [IVRS- AMD -AmdTable] The active table was 536 bytes, matching the patched artifact. More importantly, group 14 no longer contained the blocking direct reservation. It retained only the normal MSI and reserved regions.\nThis is the decisive test: the override changed the kernel’s IOMMU model, not merely a userspace configuration file.\nBinding Before Userspace Binding the card interactively after the desktop has started is fragile. On this laptop the GPU could be detached, but detaching the HDMI audio function could block while snd_hda_intel and the graphics session still held references.\nThe reliable approach is early binding from the initramfs:\nvfio-pci.ids=10de:28e0,10de:22be The initramfs also preloads:\nvfio vfio_pci vfio_iommu_type1 The post-reboot invariant is simple and scriptable:\n01:00.0 ... Kernel driver in use: vfio-pci 01:00.1 ... Kernel driver in use: vfio-pci I kept a separate static VFIO boot entry containing the patched IVRS table and forced device binding. That entry is a recovery path if a normal graphics-mode change ever produces an unusable host.\nThe Guest Configuration The win11 domain uses Q35, UEFI, and a host-passthrough CPU. Both PCI functions are declared as managed host devices. A SPICE/QXL display remains enabled as a rescue console while the NVIDIA driver is installed.\nThe guest-side checks are different from the host-side checks. First verify that QEMU exposes the devices on the guest PCI bus; then verify Windows has loaded the NVIDIA driver. A virt-manager window showing SPICE does not mean the guest is rendering on the virtual adapter. In Windows, assigning an application to the high-performance GPU and checking its GPU Engine (GPU 1 - 3D or GPU 1 - Compute) provides a useful runtime signal.\nThe Final Display and Input Path I did not use Looking Glass in the final setup. The G14’s right-side USB-C port is wired directly to the RTX 4060, so the simplest and most predictable solution was to connect that port to an external monitor with a USB-C-to-DisplayPort cable.\nThe resulting path is direct:\nWindows application -\u003e RTX 4060 rendering -\u003e USB-C/DisplayPort -\u003e external monitor This avoids an additional capture and shared-memory layer, and it makes the display driven by the same physical GPU that runs the Windows applications. The laptop’s internal panel remains attached to the Radeon 780M and continues to display Fedora.\nI also passed through the external keyboard and mouse as individual USB devices rather than passing through the entire USB controller. That keeps the laptop keyboard, touchpad, and host USB devices available to Fedora while the guest is running. The USB devices use an optional startup policy, so win11 can still boot when they are unplugged.\nIn this setup the guest receives the two USB devices below:\nKeyboard 258a:010c Mouse 35bb:d3fc In virt-manager these are added as USB Host Devices with startupPolicy=\"optional\". Passing through the whole controller would provide lower-level access, but it would also take the laptop’s built-in peripherals and every device on that controller away from the host.\nSPICE/QXL remains configured as a recovery console. It is useful for installation and troubleshooting, but it is not the normal display path once the external monitor is connected to the dGPU.\nSwitching Modes Safely Once static passthrough was stable, supergfxctl was configured with three explicit modes:\ngfx-i # Integrated: host uses the Radeon 780M gfx-h # Hybrid: host may use the NVIDIA driver gfx-v # Vfio: reserve the 4060 for win11 gfx-status # show mode and PCI driver ownership The Vfio -\u003e Integrated -\u003e Vfio path was tested successfully, including a subsequent win11 boot. The constraints are important:\nwin11 must be fully powered off before handing the card back to VFIO; both 01:00.0 and 01:00.1 must switch together; an external display driven by the NVIDIA stack must be disconnected or disabled before switching to VFIO; Hybrid transitions commonly require a GNOME logout; the static VFIO boot entry remains the fallback. The audio function has no independent reset path, so ad-hoc hot-unbind is not a good replacement for the tested supergfxctl sequence.\nWhat I Verify Every change is checked at four layers:\nPCI ownership: both functions use vfio-pci when the guest is stopped. IOMMU isolation: group 14 contains only the two 4060 functions and no forbidden direct region. QEMU/libvirt state: win11 is running and QEMU owns both host devices. Kernel health: no new 1:1 IOMMU mapping, VFIO fault, AER, or NVIDIA Xid messages. The general lesson is that GPU passthrough failures are not always virtualization failures. If the group is clean and the devices are already bound to VFIO, inspect the firmware’s IOMMU description before changing libvirt XML or weakening isolation. In this case, a narrowly-scoped IVRS correction was enough to turn a reproducible Invalid argument into a working, testable passthrough setup.\n",
+  "wordCount" : "1315",
+  "inLanguage": "en",
+  "datePublished": "2026-09-09T20:00:00+08:00",
+  "dateModified": "2026-09-09T20:00:00+08:00",
+  "author":{
+    "@type": "Person",
+    "name": "Mike"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "http://localhost:1313/posts/virtualization/gpu-passthrough-kvm/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Mike's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "http://localhost:1313/ico/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+<body id="top"><a href="#top" id="back-to-top" style="position:fixed;bottom:80px;right:calc((100vw - 960px) / 2 - 280px);z-index:9999;width:44px;height:44px;border-radius:50%;background:var(--tertiary);display:flex;align-items:center;justify-content:center;opacity:0.6;transition:opacity 0.3s,transform 0.2s;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,0.15)" title="Back to top"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary)"><polyline points="18 15 12 9 6 15"></polyline></svg></a><header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="http://localhost:1313/" accesskey="h" title="Mike&#39;s Blog (Alt + H)">Mike&#39;s Blog</a>
+            <div class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)" aria-label="Toggle theme">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <ul id="menu">
+            <li>
+                <a href="http://localhost:1313/" title="Home">
+                    <span>Home</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/posts/" title="Posts">
+                    <span>Posts</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/photography/" title="Photography">
+                    <span>Photography</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/archives/" title="Archive">
+                    <span>Archive</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/friends" title="Friends">
+                    <span>Friends</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/search/" title="Search (Alt &#43; /)" accesskey=/>
+                    <span>Search</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="http://localhost:1313/">Home</a>&nbsp;»&nbsp;<a href="http://localhost:1313/posts/">Posts</a></div>
+    <h1 class="post-title entry-hint-parent">
+      Making RTX 4060 Passthrough Work on an AMD Laptop
+    </h1>
+    <div class="post-meta"><span title='2026-09-09 20:00:00 +0800 +0800'>September 9, 2026</span>&nbsp;·&nbsp;<span>Mike</span>
+
+</div>
+  </header> <div class="toc">
+    <details >
+        <summary accesskey="c" title="(Alt + C)">
+            <span class="details">Table of Contents</span>
+        </summary>
+
+        <div class="inner"><ul>
+                <li>
+                    <a href="#the-topology" aria-label="The Topology">The Topology</a></li>
+                <li>
+                    <a href="#the-failure-signal" aria-label="The Failure Signal">The Failure Signal</a></li>
+                <li>
+                    <a href="#reading-the-ivrs-table" aria-label="Reading the IVRS Table">Reading the IVRS Table</a></li>
+                <li>
+                    <a href="#a-surgical-acpi-override" aria-label="A Surgical ACPI Override">A Surgical ACPI Override</a></li>
+                <li>
+                    <a href="#binding-before-userspace" aria-label="Binding Before Userspace">Binding Before Userspace</a></li>
+                <li>
+                    <a href="#the-guest-configuration" aria-label="The Guest Configuration">The Guest Configuration</a></li>
+                <li>
+                    <a href="#the-final-display-and-input-path" aria-label="The Final Display and Input Path">The Final Display and Input Path</a></li>
+                <li>
+                    <a href="#switching-modes-safely" aria-label="Switching Modes Safely">Switching Modes Safely</a></li>
+                <li>
+                    <a href="#what-i-verify" aria-label="What I Verify">What I Verify</a>
+                </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content"><p>GPU passthrough is usually presented as a short checklist: enable IOMMU, bind the GPU to <code>vfio-pci</code>, add a PCI host device, and boot the guest. That model breaks down on laptops, where firmware controls GPU enumeration and also supplies the ACPI tables that describe IOMMU isolation.</p>
+<p>On my ASUS ROG Zephyrus G14 GA403UV, the RTX 4060 was in a clean IOMMU group and was correctly bound to VFIO, yet QEMU still refused to start the VM. The useful part of the exercise was not the final XML. It was isolating the failure to an incorrect IVRS table and fixing only the affected PCI bus.</p>
+<h2 id="the-topology">The Topology<a hidden class="anchor" aria-hidden="true" href="#the-topology">#</a></h2>
+<p>The host runs Fedora 43 on a Ryzen 9 8945HS. The Radeon 780M remains the host display adapter; the mobile RTX 4060 is reserved for a Windows 11 guest named <code>win11</code>.</p>
+<p>The NVIDIA card exposes two PCI functions:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>0000:01:00.0  NVIDIA RTX 4060 Mobile       10de:28e0
+</span></span><span style="display:flex;"><span>0000:01:00.1  NVIDIA HDMI/DP audio          10de:22be
+</span></span></code></pre></div><p>Both functions are the only members of IOMMU group 14. That is the topology required for a conventional VFIO assignment: the GPU and its audio function can be isolated together, while the host keeps using the 780M.</p>
+<p>The first prerequisite is making the dGPU visible. In the laptop&rsquo;s Integrated mode the 4060 is removed from the PCI bus entirely, so there is nothing for VFIO to bind. Switching to Hybrid mode and rebooting makes <code>01:00.*</code> enumerable without taking the host&rsquo;s display away from the 780M.</p>
+<h2 id="the-failure-signal">The Failure Signal<a hidden class="anchor" aria-hidden="true" href="#the-failure-signal">#</a></h2>
+<p>After adding both PCI functions to the Q35/UEFI <code>win11</code> domain, startup failed with:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Firmware has requested this device have a 1:1 IOMMU mapping
+</span></span><span style="display:flex;"><span>Failed to set group container: Invalid argument
+</span></span></code></pre></div><p>This message is easy to misdiagnose as a libvirt or driver problem. The important observations were:</p>
+<ol>
+<li><code>lspci -nnk</code> showed both functions owned by <code>vfio-pci</code>.</li>
+<li>Group 14 contained no unrelated devices.</li>
+<li>The same failure occurred with both the legacy VFIO container backend and QEMU&rsquo;s <code>iommufd</code> path.</li>
+</ol>
+<p>That moved the investigation below libvirt. The kernel was rejecting the IOMMU domain before QEMU could map guest memory.</p>
+<h2 id="reading-the-ivrs-table">Reading the IVRS Table<a hidden class="anchor" aria-hidden="true" href="#reading-the-ivrs-table">#</a></h2>
+<p>AMD systems describe IOMMU device ranges through the ACPI IVRS table. The firmware on this machine contained two type <code>0x22</code> ranges covering:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>0x0000..0x0fff
+</span></span></code></pre></div><p>Those ranges accidentally included PCI bus <code>01</code>, where the RTX 4060 lives. Linux therefore treated the card as requiring an immutable 1:1 mapping. VFIO correctly refused to create a DMA container that violated that request.</p>
+<p>Changing kernel parameters did not address the actual defect. <code>iommu=pt</code> changes the default mapping policy, but it does not rewrite a device-specific IVRS reservation. Likewise, <code>force_isolation</code> and no-IOMMU modes would either leave the reservation intact or weaken the security boundary.</p>
+<h2 id="a-surgical-acpi-override">A Surgical ACPI Override<a hidden class="anchor" aria-hidden="true" href="#a-surgical-acpi-override">#</a></h2>
+<p>The fix was an ACPI table override that removes only bus <code>01</code> from those two ranges. Each range is split into:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>0x0000..0x00ff
+</span></span><span style="display:flex;"><span>0x0200..0x0fff
+</span></span></code></pre></div><p>The gap corresponds to the affected bus. Every other device keeps the firmware&rsquo;s original isolation rules.</p>
+<p>The patcher is deliberately conservative: it checks the IVRS signature, expected record layout, table length, and checksum before writing an output file. The resulting AML is installed through dracut&rsquo;s early CPIO mechanism:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>/etc/vfio-acpi-override/IVRS.aml
+</span></span><span style="display:flex;"><span>/etc/dracut.conf.d/91-vfio-ivrs.conf
+</span></span></code></pre></div><p>After reboot, the kernel reported both the initramfs table and the table upgrade:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>ACPI: IVRS ACPI table found in initrd
+</span></span><span style="display:flex;"><span>ACPI: Table Upgrade: override [IVRS- AMD  -AmdTable]
+</span></span></code></pre></div><p>The active table was 536 bytes, matching the patched artifact. More importantly, group 14 no longer contained the blocking <code>direct</code> reservation. It retained only the normal MSI and reserved regions.</p>
+<p>This is the decisive test: the override changed the kernel&rsquo;s IOMMU model, not merely a userspace configuration file.</p>
+<h2 id="binding-before-userspace">Binding Before Userspace<a hidden class="anchor" aria-hidden="true" href="#binding-before-userspace">#</a></h2>
+<p>Binding the card interactively after the desktop has started is fragile. On this laptop the GPU could be detached, but detaching the HDMI audio function could block while <code>snd_hda_intel</code> and the graphics session still held references.</p>
+<p>The reliable approach is early binding from the initramfs:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>vfio-pci.ids=10de:28e0,10de:22be
+</span></span></code></pre></div><p>The initramfs also preloads:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>vfio
+</span></span><span style="display:flex;"><span>vfio_pci
+</span></span><span style="display:flex;"><span>vfio_iommu_type1
+</span></span></code></pre></div><p>The post-reboot invariant is simple and scriptable:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>01:00.0 ... Kernel driver in use: vfio-pci
+</span></span><span style="display:flex;"><span>01:00.1 ... Kernel driver in use: vfio-pci
+</span></span></code></pre></div><p>I kept a separate static VFIO boot entry containing the patched IVRS table and forced device binding. That entry is a recovery path if a normal graphics-mode change ever produces an unusable host.</p>
+<h2 id="the-guest-configuration">The Guest Configuration<a hidden class="anchor" aria-hidden="true" href="#the-guest-configuration">#</a></h2>
+<p>The <code>win11</code> domain uses Q35, UEFI, and a host-passthrough CPU. Both PCI functions are declared as managed host devices. A SPICE/QXL display remains enabled as a rescue console while the NVIDIA driver is installed.</p>
+<p>The guest-side checks are different from the host-side checks. First verify that QEMU exposes the devices on the guest PCI bus; then verify Windows has loaded the NVIDIA driver. A virt-manager window showing SPICE does not mean the guest is rendering on the virtual adapter. In Windows, assigning an application to the high-performance GPU and checking its GPU Engine (<code>GPU 1 - 3D</code> or <code>GPU 1 - Compute</code>) provides a useful runtime signal.</p>
+<h2 id="the-final-display-and-input-path">The Final Display and Input Path<a hidden class="anchor" aria-hidden="true" href="#the-final-display-and-input-path">#</a></h2>
+<p>I did not use Looking Glass in the final setup. The G14&rsquo;s right-side USB-C port is wired directly to the RTX 4060, so the simplest and most predictable solution was to connect that port to an external monitor with a USB-C-to-DisplayPort cable.</p>
+<p>The resulting path is direct:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Windows application -&gt; RTX 4060 rendering -&gt; USB-C/DisplayPort -&gt; external monitor
+</span></span></code></pre></div><p>This avoids an additional capture and shared-memory layer, and it makes the display driven by the same physical GPU that runs the Windows applications. The laptop&rsquo;s internal panel remains attached to the Radeon 780M and continues to display Fedora.</p>
+<p>I also passed through the external keyboard and mouse as individual USB devices rather than passing through the entire USB controller. That keeps the laptop keyboard, touchpad, and host USB devices available to Fedora while the guest is running. The USB devices use an optional startup policy, so <code>win11</code> can still boot when they are unplugged.</p>
+<p>In this setup the guest receives the two USB devices below:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>Keyboard  258a:010c
+</span></span><span style="display:flex;"><span>Mouse     35bb:d3fc
+</span></span></code></pre></div><p>In virt-manager these are added as USB Host Devices with <code>startupPolicy=&quot;optional&quot;</code>. Passing through the whole controller would provide lower-level access, but it would also take the laptop&rsquo;s built-in peripherals and every device on that controller away from the host.</p>
+<p>SPICE/QXL remains configured as a recovery console. It is useful for installation and troubleshooting, but it is not the normal display path once the external monitor is connected to the dGPU.</p>
+<h2 id="switching-modes-safely">Switching Modes Safely<a hidden class="anchor" aria-hidden="true" href="#switching-modes-safely">#</a></h2>
+<p>Once static passthrough was stable, <code>supergfxctl</code> was configured with three explicit modes:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gfx-i       <span style="color:#75715e"># Integrated: host uses the Radeon 780M</span>
+</span></span><span style="display:flex;"><span>gfx-h       <span style="color:#75715e"># Hybrid: host may use the NVIDIA driver</span>
+</span></span><span style="display:flex;"><span>gfx-v       <span style="color:#75715e"># Vfio: reserve the 4060 for win11</span>
+</span></span><span style="display:flex;"><span>gfx-status  <span style="color:#75715e"># show mode and PCI driver ownership</span>
+</span></span></code></pre></div><p>The <code>Vfio -&gt; Integrated -&gt; Vfio</code> path was tested successfully, including a subsequent <code>win11</code> boot. The constraints are important:</p>
+<ul>
+<li><code>win11</code> must be fully powered off before handing the card back to VFIO;</li>
+<li>both <code>01:00.0</code> and <code>01:00.1</code> must switch together;</li>
+<li>an external display driven by the NVIDIA stack must be disconnected or disabled before switching to VFIO;</li>
+<li>Hybrid transitions commonly require a GNOME logout;</li>
+<li>the static VFIO boot entry remains the fallback.</li>
+</ul>
+<p>The audio function has no independent reset path, so ad-hoc hot-unbind is not a good replacement for the tested <code>supergfxctl</code> sequence.</p>
+<h2 id="what-i-verify">What I Verify<a hidden class="anchor" aria-hidden="true" href="#what-i-verify">#</a></h2>
+<p>Every change is checked at four layers:</p>
+<ol>
+<li>PCI ownership: both functions use <code>vfio-pci</code> when the guest is stopped.</li>
+<li>IOMMU isolation: group 14 contains only the two 4060 functions and no forbidden <code>direct</code> region.</li>
+<li>QEMU/libvirt state: <code>win11</code> is running and QEMU owns both host devices.</li>
+<li>Kernel health: no new <code>1:1 IOMMU mapping</code>, VFIO fault, AER, or NVIDIA Xid messages.</li>
+</ol>
+<p>The general lesson is that GPU passthrough failures are not always virtualization failures. If the group is clean and the devices are already bound to VFIO, inspect the firmware&rsquo;s IOMMU description before changing libvirt XML or weakening isolation. In this case, a narrowly-scoped IVRS correction was enough to turn a reproducible <code>Invalid argument</code> into a working, testable passthrough setup.</p>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="http://localhost:1313/tags/linux/">Linux</a></li>
+      <li><a href="http://localhost:1313/tags/kvm/">KVM</a></li>
+      <li><a href="http://localhost:1313/tags/vfio/">VFIO</a></li>
+    </ul>
+<nav class="paginav">
+  <a class="next" href="http://localhost:1313/posts/gears/gears_explained/">
+    <span class="title">Next »</span>
+    <br>
+    <span>GEARS Explained: How Graph Neural Networks Predict the Unseen</span>
+  </a>
+</nav>
+
+  </footer><script src="https://giscus.app/client.js"
+        data-repo="MikeOgilvy/mikeogilvy.github.io"
+        data-repo-id="R_kgDORiHktA"
+        data-category="Announcements"
+        data-category-id="DIC_kwDORiHktM4C4Ege"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="bottom"
+        data-theme="preferred_color_scheme"
+        data-lang="en"
+        crossorigin="anonymous"
+        async>
+</script>
+</article>
+    </main><aside id="toc-sidebar">
+    <div class="toc-sidebar-header" style="padding: 16px 16px 16px 16px;">On This Page</div>
+    <nav class="toc-sidebar-nav">
+        <nav id="TableOfContents">
+  <ul>
+    <li><a href="#the-topology">The Topology</a></li>
+    <li><a href="#the-failure-signal">The Failure Signal</a></li>
+    <li><a href="#reading-the-ivrs-table">Reading the IVRS Table</a></li>
+    <li><a href="#a-surgical-acpi-override">A Surgical ACPI Override</a></li>
+    <li><a href="#binding-before-userspace">Binding Before Userspace</a></li>
+    <li><a href="#the-guest-configuration">The Guest Configuration</a></li>
+    <li><a href="#the-final-display-and-input-path">The Final Display and Input Path</a></li>
+    <li><a href="#switching-modes-safely">Switching Modes Safely</a></li>
+    <li><a href="#what-i-verify">What I Verify</a></li>
+  </ul>
+</nav>
+    </nav>
+</aside>
+<script>
+    (function() {
+        var sidebar = document.getElementById("toc-sidebar");
+        if (!sidebar) return;
+        var nav = sidebar.querySelector("nav");
+        if (!nav) return;
+        var lists = nav.querySelectorAll("ul ul");
+        lists.forEach(function(ul) {
+            ul.style.display = "none";
+            var parentLi = ul.parentElement;
+            if (parentLi && parentLi.tagName === "LI") {
+                var toggler = document.createElement("span");
+                toggler.className = "toc-toggle";
+                toggler.textContent = "\u25B6";
+                toggler.style.cssText = "cursor:pointer;margin-right:4px;font-size:10px;display:inline-block;transition:transform 0.2s;";
+                var firstChild = parentLi.firstChild;
+                if (firstChild && firstChild.nodeType === 3) firstChild.remove();
+                parentLi.insertBefore(toggler, parentLi.firstChild);
+                toggler.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    var childUl = parentLi.querySelector(":scope > ul");
+                    if (!childUl) childUl = parentLi.querySelector("ul");
+                    if (childUl) {
+                        var isOpen = childUl.style.display !== "none";
+                        childUl.style.display = isOpen ? "none" : "block";
+                        toggler.textContent = isOpen ? "\u25B6" : "\u25BC";
+                    }
+                });
+            }
+        });
+    })();
+</script>
+<footer class="footer">
+        <span>&copy; 2026 <a href="http://localhost:1313/">Mike&#39;s Blog</a></span> · 
+
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)" class="top-link" id="top-link" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+        <path d="M12 6H0l6-6z" />
+    </svg>
+</a><script>
+    (function() {
+        const profile = document.getElementById("dynamic-profile");
+        if (!profile) return;
+
+        
+        function renderCalendar() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const today = now.getDate();
+
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            document.getElementById("cal-header").innerText = `${monthNames[month]} ${year}`;
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const grid = document.getElementById("cal-grid");
+            grid.innerHTML = "";
+
+            for (let i = 0; i < firstDay; i++) {
+                grid.innerHTML += '<span></span>';
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const isToday = d === today ? 'background: #14b30f; color: white; border-radius: 4px; font-weight: bold;' : '';
+                grid.innerHTML += `<span style="padding: 2px 0; ${isToday}">${d}</span>`;
+            }
+        }
+
+        
+        function updatePosition() {
+            const mainContent = document.querySelector(".main");
+            if (!mainContent || window.innerWidth < 1350) {
+                profile.style.opacity = "0";
+                return;
+            }
+            const rect = mainContent.getBoundingClientRect();
+            profile.style.left = (rect.left - 240) + "px"; 
+            profile.style.top = "150px";
+            profile.style.width = "200px";
+            profile.style.opacity = "1";
+        }
+
+        renderCalendar();
+        updatePosition();
+        window.addEventListener("resize", updatePosition);
+        window.addEventListener("scroll", updatePosition);
+    })();
+</script>
+
+<script>
+    (function() {
+        var sidebar = document.getElementById("toc-sidebar");
+        if (!sidebar) return;
+        var links = sidebar.querySelectorAll("a");
+        var headings = [];
+        links.forEach(function(a) {
+            var id = a.getAttribute("href");
+            if (id && id.startsWith("#")) {
+                var el = document.getElementById(id.slice(1));
+                if (el) headings.push({ link: a, el: el });
+            }
+        });
+        if (!headings.length) return;
+        window.addEventListener("scroll", function() {
+            var scrollPos = window.scrollY + 120;
+            var active = null;
+            headings.forEach(function(h) {
+                if (h.el.offsetTop <= scrollPos) active = h.link;
+            });
+            links.forEach(function(a) { a.classList.remove("active"); });
+            if (active) active.classList.add("active");
+        });
+    })();
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const text = "Recording life, technology and essays"; 
+        const target = document.querySelector(".header-description") || document.querySelector(".description");
+        
+        if (target) {
+            target.innerHTML = '<span class="typing-text"></span><span class="typing-cursor"></span>';
+            const textContainer = target.querySelector(".typing-text");
+            let i = 0;
+            const speed = 100;
+
+            function typeWriter() {
+                if (i < text.length) {
+                    textContainer.innerHTML += text.charAt(i);
+                    i++;
+                    setTimeout(typeWriter, speed);
+                }
+            }
+            typeWriter();
+        }
+    });
+</script>
+
+<style>
+    .typing-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background-color: var(--primary);
+        margin-left: 4px;
+        animation: blink 0.7s infinite;
+        vertical-align: middle;
+    }
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+    }
+</style>
+
+<script>
+    (function() {
+        const path = window.location.pathname;
+        
+        
+        if (path.includes('/photography/') && (document.querySelector('.post-single') || document.body.classList.contains('single'))) {
+            
+            document.body.classList.add('photography-wide');
+
+            const fixLayout = () => {
+                
+                
+                const containers = document.querySelectorAll('.container, .main, .post-single, .post-content');
+                containers.forEach(el => {
+                    el.style.maxWidth = '100% !important'; 
+                    el.style.setProperty('max-width', '100%', 'important');
+                    el.style.width = '100%';
+                    el.style.margin = '0';
+                    el.style.padding = '0';
+                });
+            };
+
+            
+            fixLayout();
+            
+            
+            window.addEventListener('load', fixLayout);
+            
+            
+            setTimeout(fixLayout, 100);
+            setTimeout(fixLayout, 1000); 
+        }
+    })();
+</script>
+
+<script>
+    let menu = document.getElementById('menu');
+    if (menu) {
+        
+        const scrollPosition = localStorage.getItem("menu-scroll-position");
+        if (scrollPosition) {
+            menu.scrollLeft = parseInt(scrollPosition, 10);
+        }
+        
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        const html = document.querySelector("html");
+        if (html.dataset.theme === "dark") {
+            html.dataset.theme = 'light';
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            html.dataset.theme = 'dark';
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+</body>
+
+</html>
