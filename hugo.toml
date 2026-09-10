@@ -38,7 +38,7 @@ url = "https://github.com/MikeOgilvy"
 
 [[params.socialIcons]]
 name = "X"
-url = "https://x.com/MikeOgilvy94"
+url = "https://x.com/MikeOgilvy"
 
 [[params.socialIcons]]
 name = "Telegram"
@@ -47,6 +47,10 @@ url = "https://t.me/MikeOgilvy"
 [[params.socialIcons]]
 name = "Email"
 url = "mailto:mikeogilvy25@gmail.com"
+
+[[params.socialIcons]]
+name = "whatsapp"
+url = "https://wa.me/15106960053"
 
 
 [params.assets]
