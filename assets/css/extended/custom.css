@@ -306,6 +306,43 @@ body.photography-wide .post-content + .post-footer {
     align-items: center !important; 
 }
 
+/* SFO-only gallery override: two photos per row without changing aspect ratio. */
+body.sfo-airport.photography-wide .post-content p:has(img) {
+    width: 100% !important;
+    max-width: 1200px !important;
+    margin: 2rem auto !important;
+    gap: 24px !important;
+}
+
+body.sfo-airport.photography-wide .post-content p:has(img) img {
+    height: 280px !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    max-width: 48% !important;
+    border-radius: 12px !important;
+    clip-path: inset(0 round 12px);
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.06);
+}
+
+/* Keep the 3569 frame identical even if a cached or inherited rule targets it. */
+body.sfo-airport.photography-wide .post-content img[src*="DSC_3569_2x.jpg"] {
+    border-radius: 12px !important;
+    clip-path: inset(0 round 12px) !important;
+}
+
+body.sfo-airport.photography-wide .post-content p:has(img[src*="DSC_3569_2x.jpg"]) {
+    overflow: hidden !important;
+    border-radius: 12px !important;
+}
+
+@media screen and (max-width: 700px) {
+    body.sfo-airport.photography-wide .post-content p:has(img) img {
+        height: auto !important;
+        max-width: 100% !important;
+    }
+}
+
 /* ================================================================
    右侧浮动目录
    ================================================================ */
@@ -404,4 +441,3 @@ body.photography-wide .post-content + .post-footer {
         display: none;
     }
 }
-

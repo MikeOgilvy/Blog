@@ -39,6 +39,12 @@
     <loc>http://localhost:1313/tags/travel/</loc>
     <lastmod>2026-09-09T00:00:00+00:00</lastmod>
   </url><url>
+    <loc>http://localhost:1313/photography/tokyo/</loc>
+    <lastmod>2026-08-15T00:00:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/tokyo/</loc>
+    <lastmod>2026-08-15T00:00:00+00:00</lastmod>
+  </url><url>
     <loc>http://localhost:1313/posts/gears/gears_explained/</loc>
     <lastmod>2026-06-05T07:19:29+08:00</lastmod>
   </url><url>

@@ -16,10 +16,16 @@
     {{- partial "head.html" . }}
 </head>
 
+{{- $bodyClass := "" -}}
+{{- with .File -}}
+  {{- if eq .ContentBaseName "sfo-airport" -}}
+    {{- $bodyClass = "sfo-airport" -}}
+  {{- end -}}
+{{- end -}}
 {{- if (or (ne .Kind `page` ) (eq .Layout `archives`) (eq .Layout `search`)) }}
-<body class="list" id="top">
+<body class="list {{ $bodyClass }}" id="top">
 {{- else }}
-<body id="top">
+<body class="{{ $bodyClass }}" id="top">
 {{- end }}
     {{- if not .IsHome -}}
     <a href="#top" id="back-to-top" style="position:fixed;bottom:80px;right:calc((100vw - 960px) / 2 - 280px);z-index:9999;width:44px;height:44px;border-radius:50%;background:var(--tertiary);display:flex;align-items:center;justify-content:center;opacity:0.6;transition:opacity 0.3s,transform 0.2s;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,0.15)" title="Back to top"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary)"><polyline points="18 15 12 9 6 15"></polyline></svg></a>
